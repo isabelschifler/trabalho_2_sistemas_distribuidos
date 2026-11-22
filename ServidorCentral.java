@@ -49,6 +49,10 @@ public class ServidorCentral {
     static final Map<String, OutputStream> fluxos = new HashMap<>(); // cliente -> conexao SSE aberta
     static final ExecutorService notificador = Executors.newCachedThreadPool(); // envia notificacoes fora do lock
     static final Pattern NOME = Pattern.compile("[A-Za-z0-9_-]{1,32}");
+    // JSON plano estrito: {"chave": valor, ...} com valor string, numero, true, false ou null. Rejeita chave/aspas faltando e lixo extra.
+    static final String JSON_VALOR = "(?:\"[^\"\\\\]*\"|-?\\d+(?:\\.\\d+)?|true|false|null)";
+    static final String JSON_PAR = "\"[^\"\\\\]*\"\\s*:\\s*" + JSON_VALOR;
+    static final Pattern JSON_PLANO = Pattern.compile("\\{\\s*(?:" + JSON_PAR + "(?:\\s*,\\s*" + JSON_PAR + ")*)?\\s*\\}");
     static final DateTimeFormatter HORA = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
 
     public static void main(String[] args) throws Exception {
@@ -81,8 +85,12 @@ public class ServidorCentral {
             } else if (p.length == 3 && p[1].equals("recursos") && metodo.equals("GET")) {
                 r = consultar(p[2]);
             } else if (p.length == 4 && p[1].equals("recursos") && p[3].equals("acesso") && metodo.equals("POST")) {
-                cliente = campo(corpo, "cliente");
-                r = pedir(p[2], cliente);
+                if (!JSON_PLANO.matcher(corpo.trim()).matches()) {   // corpo que nao e JSON valido -> 400
+                    r = erro(400, "corpo malformado: esperado JSON {\"cliente\":\"NomeDoCliente\"}");
+                } else {
+                    cliente = campo(corpo, "cliente");
+                    r = pedir(p[2], cliente);
+                }
             } else if (p.length == 4 && p[1].equals("recursos") && p[3].equals("acesso") && metodo.equals("DELETE")) {
                 r = liberar(p[2], cliente);
             } else if (p.length >= 2 && p[1].equals("recursos")) {

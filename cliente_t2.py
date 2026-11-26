@@ -53,7 +53,7 @@ def ouvir_eventos(conectado):
     )
 
     try:
-        with urllib.request.urlopen(rq, timeout=10) as r:
+      with urllib.request.urlopen(rq) as r:
             conectado.set()  # confirma somente quando a conexao foi estabelecida
 
             evento = None
@@ -106,7 +106,7 @@ def liberar(rid):
 
 
 def estado():
-    status, texto = enviar("GET", "/recursos")
+    status, texto = enviar("GET", f"/recursos?cliente={NOME}")
     if status == 200:
         for r in json.loads(texto):
             print(f"   {r['id']}: na SC = {r['dono'] or '(livre)'} | fila = {r['fila'] or '(vazia)'}")

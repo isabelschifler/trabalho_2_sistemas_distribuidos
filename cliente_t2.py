@@ -44,27 +44,42 @@ def enviar(metodo, caminho, corpo=None):
 
 # ----------------------------------------------------------------- notificacoes (thread propria)
 
+
 def ouvir_eventos(conectado):
     """Mantem o GET /eventos aberto e mostra cada evento assim que chega (SSE)."""
-    rq = urllib.request.Request(f"{BASE}/eventos?cliente={NOME}", headers={"Accept": "text/event-stream"})
+    rq = urllib.request.Request(
+        f"{BASE}/eventos?cliente={NOME}",
+        headers={"Accept": "text/event-stream"}
+    )
+
     try:
-        with urllib.request.urlopen(rq) as r:
-            conectado.set()                                  # canal aberto: ja podemos pedir recursos
+        with urllib.request.urlopen(rq, timeout=10) as r:
+            conectado.set()  # confirma somente quando a conexao foi estabelecida
+
             evento = None
-            for bruto in r:                                  # bloqueia ate o servidor escrever algo
+
+            for bruto in r:
                 linha = bruto.decode("utf-8").rstrip("\r\n")
+
                 if linha.startswith("event:"):
                     evento = linha[6:].strip()
+
                 elif linha.startswith("data:") and evento:
                     d = json.loads(linha[5:].strip())
-                    log(f"NOTIFICACAO >>> evento '{d['evento']}': o recurso {d['recurso']} agora e SEU. "
-                        f"Pode usar a secao critica e depois liberar.")
+
+                    log(
+                        f"NOTIFICACAO >>> evento '{d['evento']}': "
+                        f"o recurso {d['recurso']} agora e SEU. "
+                        f"Pode usar a secao critica e depois liberar."
+                    )
+
                     with trava_tela:
-                        print("opcao> ", end="", flush=True)  # redesenha o prompt do menu
+                        print("opcao> ", end="", flush=True)
+
                     evento = None
-    except Exception as e:                                   # servidor caiu / conexao encerrada
-        log(f"canal de notificacoes encerrado: {e}")
-        conectado.set()
+
+    except Exception as e:
+        log(f"Falha no canal de notificacoes: {e}")
 
 
 # ----------------------------------------------------------------- operacoes do menu
@@ -106,26 +121,51 @@ def menu():
  0) Sair""")
 
 
+
 def main():
     global NOME, BASE
+
     if len(sys.argv) < 2:
         print(__doc__)
         return
+
     NOME = sys.argv[1]
+
     if len(sys.argv) > 2:
         BASE = "http://" + sys.argv[2]
+
     conectado = threading.Event()
-    threading.Thread(target=ouvir_eventos, args=(conectado,), daemon=True).start()
-    conectado.wait(timeout=5)
-    acoes = {"1": lambda: pedir("R1"), "2": lambda: pedir("R2"),
-             "3": lambda: liberar("R1"), "4": lambda: liberar("R2"), "5": estado}
+
+    threading.Thread(
+        target=ouvir_eventos,
+        args=(conectado,),
+        daemon=True
+    ).start()
+
+    # Aguarda a confirmacao da conexao SSE
+    if not conectado.wait(timeout=5):
+        print("Erro: nao foi possivel conectar ao canal de notificacoes SSE.")
+        print("Verifique se o servidor esta funcionando e tente novamente.")
+        return
+
+    acoes = {
+        "1": lambda: pedir("R1"),
+        "2": lambda: pedir("R2"),
+        "3": lambda: liberar("R1"),
+        "4": lambda: liberar("R2"),
+        "5": estado
+    }
+
     while True:
         menu()
         op = input("opcao> ").strip()
+
         if op == "0":
             break
+
         acoes.get(op, lambda: print("opcao invalida"))()
 
 
 if __name__ == "__main__":
     main()
+

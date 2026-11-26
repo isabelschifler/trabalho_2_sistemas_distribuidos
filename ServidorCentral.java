@@ -178,20 +178,38 @@ public class ServidorCentral {
         }
     }
 
-    /** SSE: o cliente mantem este GET aberto; o servidor escreve nele os eventos "concedido". */
-    static void eventos(HttpExchange ex, String cliente) throws IOException {
-        if (cliente == null || !NOME.matcher(cliente).matches()) {
-            enviar(ex, erro(400, "parametro 'cliente' obrigatorio"));
-            return;
-        }
-        ex.getResponseHeaders().set("Content-Type", "text/event-stream");
-        ex.getResponseHeaders().set("Cache-Control", "no-cache");
-        ex.sendResponseHeaders(200, 0);                            // resposta em chunks, fica aberta
-        OutputStream os = ex.getResponseBody();
-        synchronized (os) { os.write(": conectado\n\n".getBytes(StandardCharsets.UTF_8)); os.flush(); }
-        synchronized (LOCK) { fluxos.put(cliente, os); }
-        log("SSE       " + cliente + " conectado ao canal de notificacoes [" + Thread.currentThread().getName() + "]");
+    
+/** SSE: o cliente mantem este GET aberto; o servidor escreve os eventos "concedido". */
+static void eventos(HttpExchange ex, String cliente) throws IOException {
+
+    if (cliente == null || !NOME.matcher(cliente).matches()) {
+        enviar(ex, erro(400, "parametro 'cliente' obrigatorio"));
+        return;
     }
+
+    ex.getResponseHeaders().set("Content-Type", "text/event-stream");
+    ex.getResponseHeaders().set("Cache-Control", "no-cache");
+    
+    synchronized (LOCK) {
+        // Estabelece a conexao SSE
+        ex.sendResponseHeaders(200, 0);
+
+        OutputStream os = ex.getResponseBody();
+
+        // Envia confirmacao inicial da conexao
+        synchronized (os) {
+            os.write(": conectado\n\n".getBytes(StandardCharsets.UTF_8));
+            os.flush();
+        }
+
+        // Registra o canal antes de liberar o LOCK
+        fluxos.put(cliente, os);
+
+        log("SSE       " + cliente + " conectado ao canal de notificacoes ["
+                + Thread.currentThread().getName() + "]");
+    }
+}
+
 
     // ------------------------------------------------------------------ notificacao (publisher)
 
